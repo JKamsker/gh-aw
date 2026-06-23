@@ -282,6 +282,8 @@ async function fetchMCPTools(serverUrl, apiKey, core, options = {}) {
   let lastTools = [];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let shouldRetry = false;
+
     // Step 1: initialize – establish the session and capture Mcp-Session-Id if present
     let sessionHeader = {};
     try {
@@ -292,6 +294,10 @@ async function fetchMCPTools(serverUrl, apiKey, core, options = {}) {
       }
     } catch (err) {
       core.warning(`  initialize failed for ${serverUrl}: ${err instanceof Error ? err.message : String(err)}`);
+      shouldRetry = true;
+    }
+
+    if (shouldRetry) {
       if (attempt < maxAttempts && retryDelayMs > 0) {
         await sleep(retryDelayMs);
       }
@@ -314,6 +320,9 @@ async function fetchMCPTools(serverUrl, apiKey, core, options = {}) {
         const result = respBody.result;
         if ("tools" in result && Array.isArray(result.tools)) {
           lastTools = /** @type {Array<{name: string, description?: string, inputSchema?: unknown}>} */ result.tools;
+          if (expectedTools.length === 0) {
+            return lastTools;
+          }
           const missingExpected = getMissingExpectedTools(expectedTools, lastTools);
           if (missingExpected.length === 0) {
             return lastTools;
