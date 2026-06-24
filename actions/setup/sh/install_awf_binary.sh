@@ -42,6 +42,17 @@ for arg in "${@:2}"; do
   esac
 done
 
+# In rootless (network-isolation) mode, install into a user-writable location
+# instead of the root-owned /usr/local/{bin,lib}. On standard runners /usr/local
+# is root-owned, so a rootless install there is impossible without sudo. A
+# per-user prefix under $HOME/.local is always writable, and we add its bin
+# directory to $GITHUB_PATH so the bare `awf` invocation in later steps resolves.
+if [ "$ROOTLESS" = "true" ]; then
+  AWF_USER_PREFIX="${HOME}/.local"
+  AWF_INSTALL_DIR="${AWF_USER_PREFIX}/bin"
+  AWF_LIB_DIR="${AWF_USER_PREFIX}/lib/awf"
+fi
+
 # maybe_sudo runs a command with sudo unless --rootless was specified.
 # In network-isolation mode, AWF runs rootless so sudo is not available or needed.
 maybe_sudo() {
@@ -64,21 +75,18 @@ ARCH="$(uname -m)"
 
 echo "Installing awf with checksum verification (version: ${AWF_VERSION}, os: ${OS}, arch: ${ARCH})"
 
-# Rootless mode preflight: verify write access to install directories
+# Rootless mode preflight: create the user-writable install directories and
+# verify they are writable. Unlike the root-owned /usr/local prefix, the
+# per-user $HOME/.local prefix can always be created without sudo.
 if [ "$ROOTLESS" = "true" ]; then
-  if ! [ -w "${AWF_INSTALL_DIR}" ] 2>/dev/null; then
-    echo "ERROR: --rootless requires write access to ${AWF_INSTALL_DIR}" >&2
-    echo "       This directory is root-owned on standard runners. --rootless is intended" >&2
-    echo "       only for ARC/Kubernetes containers where the install dirs are pre-chowned" >&2
-    echo "       to the runner user." >&2
+  if ! { mkdir -p "${AWF_INSTALL_DIR}" 2>/dev/null && [ -w "${AWF_INSTALL_DIR}" ]; }; then
+    echo "ERROR: --rootless could not create a writable install directory at ${AWF_INSTALL_DIR}" >&2
+    echo "       Ensure \$HOME (${HOME}) is set and writable by the runner user." >&2
     exit 1
   fi
-  # Also check lib dir writability (or ability to create it)
   if ! { mkdir -p "${AWF_LIB_DIR}" 2>/dev/null && [ -w "${AWF_LIB_DIR}" ]; }; then
-    echo "ERROR: --rootless requires write access to ${AWF_LIB_DIR}" >&2
-    echo "       This directory is root-owned on standard runners. --rootless is intended" >&2
-    echo "       only for ARC/Kubernetes containers where the install dirs are pre-chowned" >&2
-    echo "       to the runner user." >&2
+    echo "ERROR: --rootless could not create a writable lib directory at ${AWF_LIB_DIR}" >&2
+    echo "       Ensure \$HOME (${HOME}) is set and writable by the runner user." >&2
     exit 1
   fi
 fi
@@ -174,12 +182,12 @@ install_bundle() {
   maybe_sudo cp "${TEMP_DIR}/${bundle_name}" "${AWF_LIB_DIR}/${bundle_name}"
 
   # Create wrapper script using the absolute path to node.
-  # Using an unquoted heredoc (<<WRAPPER) so that ${node_bin} is expanded
-  # at wrapper-creation time, while \$@ is left as the literal $@ for
-  # runtime argument forwarding.
+  # Using an unquoted heredoc (<<WRAPPER) so that ${node_bin} and ${AWF_LIB_DIR}
+  # are expanded at wrapper-creation time, while \$@ is left as the literal $@
+  # for runtime argument forwarding.
   maybe_sudo tee "${AWF_INSTALL_DIR}/${AWF_INSTALL_NAME}" > /dev/null <<WRAPPER
 #!/bin/bash
-exec ${node_bin} /usr/local/lib/awf/awf-bundle.js "\$@"
+exec ${node_bin} ${AWF_LIB_DIR}/awf-bundle.js "\$@"
 WRAPPER
   maybe_sudo chmod +x "${AWF_INSTALL_DIR}/${AWF_INSTALL_NAME}"
 
@@ -256,6 +264,18 @@ if has_node_20; then
 else
   echo "Node.js >= 20 not available, falling back to platform binary..."
   install_platform_binary
+fi
+
+# In rootless mode the binary lives under a per-user prefix (e.g.
+# $HOME/.local/bin) that is not on PATH by default. Expose it to the current
+# shell and to subsequent GitHub Actions steps so the bare `awf` invocation in
+# the execution step resolves without sudo or an absolute path.
+if [ "$ROOTLESS" = "true" ]; then
+  export PATH="${AWF_INSTALL_DIR}:${PATH}"
+  if [ -n "${GITHUB_PATH:-}" ]; then
+    echo "${AWF_INSTALL_DIR}" >> "${GITHUB_PATH}"
+    echo "✓ Added ${AWF_INSTALL_DIR} to GITHUB_PATH"
+  fi
 fi
 
 # Verify installation by running --version.
