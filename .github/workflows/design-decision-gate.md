@@ -71,14 +71,22 @@ steps:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+      AW_CONTEXT: ${{ github.event.inputs.aw_context || '' }}
       EXPR_GITHUB_EVENT_NAME: ${{ github.event_name }}
       EXPR_GITHUB_REPOSITORY: ${{ github.repository }}
       EXPR_GITHUB_WORKSPACE: ${{ github.workspace }}
     run: |
       set -euo pipefail
 
+      if [ -z "${PR_NUMBER:-}" ] && [ -n "${AW_CONTEXT:-}" ]; then
+        if ! PR_NUMBER=$(echo "$AW_CONTEXT" | jq -er 'if type == "object" then (if .item_type == "pull_request" then (.item_number // "") else "" end) else error("aw_context must be a JSON object") end'); then
+          echo "::warning::Failed to parse aw_context for PR number fallback"
+          PR_NUMBER=""
+        fi
+      fi
+
       if [ "$EXPR_GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -z "${PR_NUMBER:-}" ]; then
-        echo "::error::workflow_dispatch requires inputs.pr_number"
+        echo "::error::workflow_dispatch requires aw_context.item_number (or inputs.pr_number)"
         exit 1
       fi
 
