@@ -18,6 +18,21 @@ const (
 	GitHubActionsOrgRepo = "github/gh-aw-actions"
 )
 
+// DefaultActionsRepo returns the action-mode repository for the current gh-aw source repository.
+// Upstream release builds keep using github/gh-aw-actions. Fork release builds use
+// <source-repo>/actions so compiled workflows are self-contained in the fork.
+func DefaultActionsRepo() string {
+	return defaultActionsRepoForSource(GetSourceRepo())
+}
+
+func defaultActionsRepoForSource(sourceRepo string) string {
+	sourceRepo = strings.Trim(strings.TrimSpace(sourceRepo), "/")
+	if sourceRepo == "" || strings.EqualFold(sourceRepo, GitHubOrgRepo) {
+		return GitHubActionsOrgRepo
+	}
+	return sourceRepo + "/actions"
+}
+
 // ResolveSetupActionReference resolves the actions/setup action reference based on action mode and version.
 // This is a standalone helper function that can be used by both Compiler methods and standalone
 // workflow generators (like maintenance workflow) that don't have access to WorkflowData.
@@ -36,15 +51,19 @@ const (
 //   - For action mode without resolver: "github/gh-aw-actions/setup@<version>" (tag-based, SHA resolved later)
 //   - Falls back to local path if version is invalid in release/action mode
 func ResolveSetupActionReference(ctx context.Context, actionMode ActionMode, version string, actionTag string, resolver SHAResolver) string {
-	return resolveSetupActionRef(ctx, actionMode, version, actionTag, resolver, "")
+	return resolveSetupActionRef(ctx, actionMode, version, actionTag, resolver, "", "")
 }
 
 // resolveSetupActionRef is the internal implementation of ResolveSetupActionReference
-// that accepts an optional actionsOrgRepo override. When actionsOrgRepo is empty,
-// GitHubActionsOrgRepo is used.
-func resolveSetupActionRef(ctx context.Context, actionMode ActionMode, version string, actionTag string, resolver SHAResolver, actionsOrgRepo string) string {
+// that accepts optional action-mode and source repository overrides. Empty values use
+// the source-repo-aware package defaults.
+func resolveSetupActionRef(ctx context.Context, actionMode ActionMode, version string, actionTag string, resolver SHAResolver, actionsOrgRepo string, sourceRepo string) string {
 	if actionsOrgRepo == "" {
-		actionsOrgRepo = GitHubActionsOrgRepo
+		actionsOrgRepo = DefaultActionsRepo()
+	}
+	sourceRepo = strings.Trim(strings.TrimSpace(sourceRepo), "/")
+	if sourceRepo == "" {
+		sourceRepo = GetSourceRepo()
 	}
 
 	localPath := "./actions/setup"
@@ -57,7 +76,7 @@ func resolveSetupActionRef(ctx context.Context, actionMode ActionMode, version s
 		return resolveSetupActionModeRef(ctx, actionTag, version, resolver, actionsOrgRepo, localPath)
 	}
 	if actionMode == ActionModeRelease {
-		return resolveSetupReleaseModeRef(ctx, actionTag, version, resolver, localPath)
+		return resolveSetupReleaseModeRef(ctx, actionTag, version, resolver, sourceRepo, localPath)
 	}
 	actionRefLog.Printf("WARNING: Unknown action mode %s, defaulting to local path", actionMode)
 	return localPath
@@ -78,13 +97,13 @@ func resolveSetupActionModeRef(ctx context.Context, actionTag string, version st
 	return remoteRef
 }
 
-func resolveSetupReleaseModeRef(ctx context.Context, actionTag string, version string, resolver SHAResolver, localPath string) string {
+func resolveSetupReleaseModeRef(ctx context.Context, actionTag string, version string, resolver SHAResolver, sourceRepo string, localPath string) string {
 	tag, ok := resolveSetupTag(actionTag, version, localPath)
 	if !ok {
 		return localPath
 	}
 	actionPath := strings.TrimPrefix(localPath, "./")
-	actionRepo := fmt.Sprintf("%s/%s", GitHubOrgRepo, actionPath)
+	actionRepo := fmt.Sprintf("%s/%s", sourceRepo, actionPath)
 	remoteRef := fmt.Sprintf("%s@%s", actionRepo, tag)
 	ref := tryResolveSetupSHA(ctx, resolver, actionRepo, tag, remoteRef, "Release mode")
 	if ref != "" {
@@ -176,12 +195,12 @@ func (c *Compiler) resolveSetupReference(data *WorkflowData, hasActionTag bool, 
 		resolver = data.ActionResolver
 	}
 	if c.actionTag != "" {
-		return resolveSetupActionRef(c.ctx, c.actionMode, c.version, c.actionTag, resolver, c.effectiveActionsRepo())
+		return resolveSetupActionRef(c.ctx, c.actionMode, c.version, c.actionTag, resolver, c.effectiveActionsRepo(), c.effectiveSourceRepo())
 	}
 	if !hasActionTag {
-		return resolveSetupActionRef(c.ctx, c.actionMode, c.version, "", resolver, c.effectiveActionsRepo())
+		return resolveSetupActionRef(c.ctx, c.actionMode, c.version, "", resolver, c.effectiveActionsRepo(), c.effectiveSourceRepo())
 	}
-	return resolveSetupActionRef(c.ctx, ActionModeAction, c.version, frontmatterActionTag, resolver, c.effectiveActionsRepo())
+	return resolveSetupActionRef(c.ctx, ActionModeAction, c.version, frontmatterActionTag, resolver, c.effectiveActionsRepo(), c.effectiveSourceRepo())
 }
 
 func (c *Compiler) resolveReleaseActionReference(localActionPath string, data *WorkflowData) string {
@@ -250,7 +269,7 @@ func (c *Compiler) convertToRemoteActionRef(localPath string, data *WorkflowData
 
 	// Construct the remote reference with tag: github/gh-aw/actions/name@tag
 	// The SHA will be resolved later by action pinning infrastructure
-	remoteRef := fmt.Sprintf("%s/%s@%s", GitHubOrgRepo, actionPath, tag)
+	remoteRef := fmt.Sprintf("%s/%s@%s", c.effectiveSourceRepo(), actionPath, tag)
 	actionRefLog.Printf("Remote reference: %s (SHA will be resolved via action pins)", remoteRef)
 
 	return remoteRef

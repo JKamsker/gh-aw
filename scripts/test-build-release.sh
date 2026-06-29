@@ -39,9 +39,15 @@ cat > "$TEMP_SCRIPT" <<'EOF'
 set -e
 
 VERSION="$1"
+SOURCE_REPO="${2:-github/gh-aw}"
 
 if [ -z "$VERSION" ]; then
   echo "error: VERSION argument is required" >&2
+  exit 1
+fi
+
+if [ -z "$SOURCE_REPO" ]; then
+  echo "error: SOURCE_REPO must not be empty" >&2
   exit 1
 fi
 
@@ -50,6 +56,7 @@ platforms=(
 )
 
 echo "Building binaries with version: $VERSION"
+echo "Embedding source repository: $SOURCE_REPO"
 
 mkdir -p dist
 
@@ -72,7 +79,7 @@ for p in "${platforms[@]}"; do
   echo "Building gh-aw for $p..."
   GOOS="$goos" GOARCH="$goarch" go build \
     -trimpath \
-    -ldflags="-s -w -X main.version=${VERSION} -X main.isRelease=true" \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.isRelease=true -X main.sourceRepo=${SOURCE_REPO}" \
     -o "dist/${p}${ext}" \
     ./cmd/gh-aw
 done
@@ -84,7 +91,7 @@ chmod +x "$TEMP_SCRIPT"
 
 # Build with test version
 TEST_VERSION="v1.2.3-test"
-"$TEMP_SCRIPT" "$TEST_VERSION"
+"$TEMP_SCRIPT" "$TEST_VERSION" "JKamsker/gh-aw"
 
 # Check that binary was created
 if [ ! -f "dist/linux-amd64" ]; then

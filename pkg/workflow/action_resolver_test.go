@@ -5,6 +5,8 @@ package workflow
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +14,8 @@ import (
 	"github.com/github/gh-aw/pkg/gitutil"
 	"github.com/github/gh-aw/pkg/testutil"
 )
+
+const forkGhAwRefTestSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func TestExtractBaseRepo(t *testing.T) {
 	tests := []struct {
@@ -114,6 +118,69 @@ func TestActionResolverFailedResolutionCache(t *testing.T) {
 
 // Note: Testing the actual GitHub API resolution requires network access
 // and is tested in integration tests or with network-dependent test tags
+
+func TestResolveGhAwRefUsesConfiguredSourceRepo(t *testing.T) {
+	withSourceRepo(t, "JKamsker/gh-aw")
+	installFakeGhForRefResolution(t)
+
+	sha, err := ResolveGhAwRef(context.Background(), "v0.82.0-jk.1")
+	if err != nil {
+		t.Fatalf("ResolveGhAwRef returned error: %v", err)
+	}
+	if sha != forkGhAwRefTestSHA {
+		t.Fatalf("ResolveGhAwRef returned %q, want %q", sha, forkGhAwRefTestSHA)
+	}
+}
+
+func TestResolveGhAwRefFullSHABypassesSourceRepoLookup(t *testing.T) {
+	withSourceRepo(t, "JKamsker/gh-aw")
+
+	sha, err := ResolveGhAwRef(context.Background(), forkGhAwRefTestSHA)
+	if err != nil {
+		t.Fatalf("ResolveGhAwRef returned error: %v", err)
+	}
+	if sha != forkGhAwRefTestSHA {
+		t.Fatalf("ResolveGhAwRef returned %q, want %q", sha, forkGhAwRefTestSHA)
+	}
+}
+
+func installFakeGhForRefResolution(t *testing.T) {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	fakeGhPath := filepath.Join(tempDir, "gh")
+	if runtime.GOOS == "windows" {
+		fakeGhPath += ".bat"
+	}
+
+	const expectedPath = "/repos/JKamsker/gh-aw/commits/v0.82.0-jk.1"
+	var script string
+	if runtime.GOOS == "windows" {
+		script = "@echo off\r\n" +
+			"if \"%1\"==\"api\" if \"%2\"==\"" + expectedPath + "\" (\r\n" +
+			"  echo " + forkGhAwRefTestSHA + "\r\n" +
+			"  exit /b 0\r\n" +
+			")\r\n" +
+			"echo unexpected gh args: %* 1>&2\r\n" +
+			"exit /b 42\r\n"
+	} else {
+		script = "#!/bin/sh\n" +
+			"if [ \"$1\" = \"api\" ] && [ \"$2\" = \"" + expectedPath + "\" ]; then\n" +
+			"  printf '%s\\n' '" + forkGhAwRefTestSHA + "'\n" +
+			"  exit 0\n" +
+			"fi\n" +
+			"printf 'unexpected gh args: %s\\n' \"$*\" >&2\n" +
+			"exit 42\n"
+	}
+
+	if err := os.WriteFile(fakeGhPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake gh executable: %v", err)
+	}
+
+	t.Setenv("PATH", tempDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+}
 
 // TestParseTagRefTSV verifies that ParseTagRefTSV correctly parses the tab-separated
 // output produced by the GitHub API jq expression `[.object.sha, .object.type] | @tsv`.

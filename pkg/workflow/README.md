@@ -418,7 +418,8 @@ The MCP Scripts subsystem provides inline custom tool definitions (JavaScript, s
 | `GetActionPin` | `func(actionRepo string) string` | Returns the pinned SHA for an action |
 | `DetectActionMode` | `func(version string) ActionMode` | Detects the action reference mode |
 | `ParseTagRefTSV` | `func(line string) (sha, objType string, err error)` | Parses tab-separated tag ref output into SHA and object type |
-| `ResolveGhAwRef` | `func(ctx context.Context, ref string) (string, error)` | Resolves a branch, tag, or SHA ref in `github/gh-aw` to its full 40-character commit SHA; passes full SHAs through unchanged |
+| `ResolveGhAwRef` | `func(ctx context.Context, ref string) (string, error)` | Resolves a branch, tag, or SHA ref in the configured gh-aw source repository to its full 40-character commit SHA; passes full SHAs through unchanged |
+| `ResolveGhAwRefInRepo` | `func(ctx context.Context, sourceRepo, ref string) (string, error)` | Resolves a branch, tag, or SHA ref in an explicit gh-aw source repository to its full 40-character commit SHA; passes full SHAs through unchanged |
 | `ExtractActionsFromLockFile` | `func(lockFilePath string) ([]ActionUsage, error)` | Extracts action usages from a lock file |
 | `CheckActionSHAUpdates` | `func(actions []ActionUsage, resolver *ActionResolver) []ActionUpdateCheck` | Checks whether action SHAs need updates |
 | `ApplyActionPinsToTypedSteps` | `func([]*WorkflowStep, *WorkflowData) []*WorkflowStep` | Applies pins to all steps |

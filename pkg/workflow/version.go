@@ -1,6 +1,8 @@
 package workflow
 
 import (
+	"strings"
+
 	"github.com/github/gh-aw/pkg/logger"
 )
 
@@ -21,6 +23,12 @@ var compilerVersion = "dev"
 // This is set at build time via -X linker flag and used to determine
 // if version information should be included in generated workflows.
 var isReleaseBuild = false
+
+// compilerSourceRepo is the GitHub repository that this gh-aw binary was built from.
+// Release builds use it when generating self-referential action refs. Upstream
+// releases keep the historical github/gh-aw-actions default; fork releases can
+// stamp their fork repo so generated lock files are runnable without extra flags.
+var compilerSourceRepo = GitHubOrgRepo
 
 // SetVersion sets the compiler version. Call once during CLI initialization.
 // The version is used in generated workflow headers and as the default version
@@ -50,4 +58,22 @@ func IsRelease() bool {
 // It relies on the isReleaseBuild flag set at build time via -X linker flag.
 func IsReleasedVersion(version string) bool {
 	return isReleaseBuild
+}
+
+// SetSourceRepo sets the source repository for this gh-aw binary.
+func SetSourceRepo(repo string) {
+	repo = strings.Trim(strings.TrimSpace(repo), "/")
+	if repo == "" {
+		repo = GitHubOrgRepo
+	}
+	versionLog.Printf("Setting compiler source repository: %s", repo)
+	compilerSourceRepo = repo
+}
+
+// GetSourceRepo returns the source repository for this gh-aw binary.
+func GetSourceRepo() string {
+	if compilerSourceRepo == "" {
+		return GitHubOrgRepo
+	}
+	return compilerSourceRepo
 }

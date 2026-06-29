@@ -259,18 +259,28 @@ func peelTagObject(ctx context.Context, baseRepo, repo, version, sha string) (ne
 	return newSHA, objType, nil
 }
 
-// ResolveGhAwRef resolves a branch, tag, or SHA ref in the github/gh-aw
+// ResolveGhAwRef resolves a branch, tag, or SHA ref in the current gh-aw source
 // repository to its full 40-character commit SHA.
 // If ref is already a valid full SHA it is returned unchanged.
 // Otherwise the GitHub API commits endpoint is queried, which accepts
 // branch names, tag names, and SHAs.
 func ResolveGhAwRef(ctx context.Context, ref string) (string, error) {
+	return ResolveGhAwRefInRepo(ctx, GetSourceRepo(), ref)
+}
+
+// ResolveGhAwRefInRepo resolves a branch, tag, or SHA ref in the given gh-aw source
+// repository to its full 40-character commit SHA.
+func ResolveGhAwRefInRepo(ctx context.Context, sourceRepo string, ref string) (string, error) {
 	if gitutil.IsValidFullSHA(ref) {
 		resolverLog.Printf("--gh-aw-ref %q is already a full SHA, no resolution needed", ref)
 		return ref, nil
 	}
-	resolverLog.Printf("Resolving --gh-aw-ref %q to commit SHA via GitHub API", ref)
-	apiPath := "/repos/github/gh-aw/commits/" + ref
+	sourceRepo = strings.Trim(strings.TrimSpace(sourceRepo), "/")
+	if sourceRepo == "" {
+		sourceRepo = GitHubOrgRepo
+	}
+	resolverLog.Printf("Resolving --gh-aw-ref %q in %s to commit SHA via GitHub API", ref, sourceRepo)
+	apiPath := "/repos/" + sourceRepo + "/commits/" + ref
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := ExecGHContext(callCtx, "api", apiPath, "--jq", ".sha")
@@ -278,14 +288,14 @@ func ResolveGhAwRef(ctx context.Context, ref string) (string, error) {
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
 		if msg != "" {
-			return "", fmt.Errorf("failed to resolve gh-aw ref %q to SHA: %s: %w", ref, msg, err)
+			return "", fmt.Errorf("failed to resolve gh-aw ref %q in %s to SHA: %s: %w", ref, sourceRepo, msg, err)
 		}
-		return "", fmt.Errorf("failed to resolve gh-aw ref %q to SHA: %w", ref, err)
+		return "", fmt.Errorf("failed to resolve gh-aw ref %q in %s to SHA: %w", ref, sourceRepo, err)
 	}
 	sha := strings.TrimSpace(string(output))
 	if !gitutil.IsValidFullSHA(sha) {
-		return "", fmt.Errorf("unexpected response resolving gh-aw ref %q: got %q (expected 40-char hex SHA)", ref, sha)
+		return "", fmt.Errorf("unexpected response resolving gh-aw ref %q in %s: got %q (expected 40-char hex SHA)", ref, sourceRepo, sha)
 	}
-	resolverLog.Printf("Resolved --gh-aw-ref %q to commit SHA %s", ref, sha)
+	resolverLog.Printf("Resolved --gh-aw-ref %q in %s to commit SHA %s", ref, sourceRepo, sha)
 	return sha, nil
 }

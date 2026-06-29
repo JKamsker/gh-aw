@@ -78,7 +78,7 @@ type Compiler struct {
 	markdownPath            string                   // Path to the markdown file being compiled (for context in dynamic tool generation)
 	actionMode              ActionMode               // Mode for generating JavaScript steps (inline vs custom actions)
 	actionTag               string                   // Override action SHA or tag for actions/setup (when set, overrides actionMode to release)
-	actionsRepo             string                   // Override the external actions repository (default: github/gh-aw-actions)
+	actionsRepo             string                   // Override the external actions repository (default: github/gh-aw-actions upstream, <source-repo>/actions for fork release builds)
 	jobManager              *JobManager              // Manages jobs and dependencies
 	engineRegistry          *EngineRegistry          // Registry of available agentic engines
 	engineCatalog           *EngineCatalog           // Catalog of engine definitions backed by the registry
@@ -266,24 +266,28 @@ func (c *Compiler) GetActionTag() string {
 }
 
 // SetActionsRepo sets the external actions repository override.
-// When set, this overrides the default "github/gh-aw-actions" repository used in action mode.
+// When set, this overrides the default action-mode repository.
 func (c *Compiler) SetActionsRepo(repo string) {
 	c.actionsRepo = repo
 }
 
 // effectiveActionsRepo returns the actions repository to use for action mode references.
-// Returns the override if set, otherwise returns the default GitHubActionsOrgRepo constant.
+// Returns the override if set, otherwise returns the source-repo-aware default.
 func (c *Compiler) effectiveActionsRepo() string {
 	if c.actionsRepo != "" {
 		return c.actionsRepo
 	}
-	return GitHubActionsOrgRepo
+	return DefaultActionsRepo()
 }
 
 // EffectiveActionsRepo returns the actions repository used for action mode references.
-// Returns the override if set, otherwise returns the default GitHubActionsOrgRepo.
+// Returns the override if set, otherwise returns the source-repo-aware default.
 func (c *Compiler) EffectiveActionsRepo() string {
 	return c.effectiveActionsRepo()
+}
+
+func (c *Compiler) effectiveSourceRepo() string {
+	return GetSourceRepo()
 }
 
 // GetVersion returns the version string used by the compiler

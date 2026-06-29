@@ -20,8 +20,9 @@ import (
 
 // Build-time variables set by GoReleaser
 var (
-	version   = "dev"
-	isRelease = "false" // Set to "true" during release builds
+	version    = "dev"
+	isRelease  = "false" // Set to "true" during release builds
+	sourceRepo = "github/gh-aw"
 )
 
 // Global flags
@@ -249,9 +250,12 @@ Three flags govern this. --gh-aw-ref is mutually exclusive with the other two;
   --action-mode <mode>
     Explicit mode selection. Values:
       dev      Local paths (./actions/...). For developing inside the gh-aw repo.
-      release  SHA-pinned refs from github/gh-aw (e.g. github/gh-aw/actions/setup@<sha>).
+      release  SHA-pinned refs from the installed gh-aw source repository
+               (e.g. github/gh-aw/actions/setup@<sha>).
                The SHA is derived from the binary version or from --action-tag.
-      action   SHA-pinned refs from the github/gh-aw-actions repository.
+      action   SHA-pinned refs from the action-mode repository. Upstream builds
+               default to github/gh-aw-actions; fork builds default to
+               <source-repo>/actions unless --actions-repo overrides it.
                Used by release binaries. Can be combined with --action-tag to pin a version.
     Auto-detected from the binary build type when not set.
 
@@ -262,7 +266,7 @@ Three flags govern this. --gh-aw-ref is mutually exclusive with the other two;
     pin to a branch by resolving it to its current commit SHA first.
 
   --gh-aw-ref <branch-tag-or-sha>
-    Resolve a branch name, tag, or SHA from github/gh-aw to its full commit SHA
+    Resolve a branch name, tag, or SHA from the gh-aw source repository to its full commit SHA
     at compile time and pin the compiled workflow to that immutable SHA.
     Equivalent to --action-mode release --action-tag <resolved-sha>.
     Branch and tag names are resolved via the GitHub API.
@@ -278,7 +282,7 @@ Three flags govern this. --gh-aw-ref is mutually exclusive with the other two;
   ` + string(constants.CLIExtensionPrefix) + ` compile --trial --logical-repo owner/repo  # Compile for trial mode
   ` + string(constants.CLIExtensionPrefix) + ` compile --dependabot        # Generate Dependabot manifests
   ` + string(constants.CLIExtensionPrefix) + ` compile --dependabot --force  # Force overwrite existing dependabot.yml
-  ` + string(constants.CLIExtensionPrefix) + ` compile --gh-aw-ref main       # Pin workflows to current HEAD of github/gh-aw main
+  ` + string(constants.CLIExtensionPrefix) + ` compile --gh-aw-ref main       # Pin workflows to current HEAD of the installed gh-aw source repo
   ` + string(constants.CLIExtensionPrefix) + ` compile --action-tag v1.2.3    # Pin workflows to a specific release tag`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		engineOverride, _ := cmd.Flags().GetString("engine")
@@ -288,7 +292,7 @@ Three flags govern this. --gh-aw-ref is mutually exclusive with the other two;
 		ghAwRef, _ := cmd.Flags().GetString("gh-aw-ref")
 		if ghAwRef != "" {
 			// --gh-aw-ref is a convenience alias: emit refs like
-			// `github/gh-aw/actions/setup@<sha>` so external e2e harnesses can
+			// `<source-repo>/actions/setup@<sha>` so external e2e harnesses can
 			// test the compiled workflows against a specific gh-aw revision.
 			// Resolve branch/tag names to their commit SHA so the baked-in ref
 			// is immutable and not vulnerable to branch/tag mutation.
@@ -713,10 +717,10 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 
 	// Add AI flag to compile and add commands
 	compileCmd.Flags().StringP("engine", "e", "", "Override AI engine (copilot, claude, codex, gemini, crush)")
-	compileCmd.Flags().String("action-mode", "", "How gh-aw action scripts are referenced in compiled workflows: 'dev' uses local paths (for developing gh-aw itself), 'release' emits SHA-pinned remote refs from github/gh-aw, 'action' uses the github/gh-aw-actions repository. Auto-detected from the binary build type if not specified")
+	compileCmd.Flags().String("action-mode", "", "How gh-aw action scripts are referenced in compiled workflows: 'dev' uses local paths (for developing gh-aw itself), 'release' emits SHA-pinned remote refs from the installed gh-aw source repository, 'action' uses the action-mode repository (upstream default: github/gh-aw-actions; fork default: <source-repo>/actions). Auto-detected from the binary build type if not specified")
 	compileCmd.Flags().String("action-tag", "", "Pin compiled workflows to a specific version of gh-aw actions. Accepts a full commit SHA or a version tag (e.g. v1, v1.2.3). Sets --action-mode to 'release' unless --action-mode action is also specified. Cannot be combined with --gh-aw-ref; use --gh-aw-ref when you want to resolve a branch or tag name to its current SHA")
-	compileCmd.Flags().String("actions-repo", "", "Override the external actions repository used in action mode (default: github/gh-aw-actions)")
-	compileCmd.Flags().String("gh-aw-ref", "", "Pin compiled workflows to a specific branch, tag, or commit SHA of github/gh-aw (e.g. main, my-feature, abc123). Branch and tag names are resolved to their full commit SHA at compile time so the baked-in ref is immutable. Equivalent to --action-mode release --action-tag <resolved-sha>. Cannot be combined with --action-tag or --action-mode. Use this to E2E-test workflows against a specific gh-aw revision")
+	compileCmd.Flags().String("actions-repo", "", "Override the external actions repository used in action mode (upstream default: github/gh-aw-actions; fork default: <source-repo>/actions)")
+	compileCmd.Flags().String("gh-aw-ref", "", "Pin compiled workflows to a specific branch, tag, or commit SHA of the installed gh-aw source repository (e.g. main, my-feature, abc123). Branch and tag names are resolved to their full commit SHA at compile time so the baked-in ref is immutable. Equivalent to --action-mode release --action-tag <resolved-sha>. Cannot be combined with --action-tag or --action-mode. Use this to E2E-test workflows against a specific gh-aw revision")
 	compileCmd.Flags().Bool("validate", false, "Enable GitHub Actions workflow schema validation, container image validation, and action SHA validation")
 	compileCmd.Flags().BoolP("watch", "w", false, "Watch for changes to workflow files and recompile automatically")
 	compileCmd.Flags().StringP("dir", "d", "", "Workflow directory (default: .github/workflows)")
@@ -946,6 +950,9 @@ func main() {
 
 	// Set release flag in the workflow package
 	workflow.SetIsRelease(isRelease == "true")
+
+	// Set the source repository used for release-mode action references.
+	workflow.SetSourceRepo(sourceRepo)
 
 	// Set up a context that is cancelled when Ctrl-C (SIGINT) or SIGTERM is received.
 	// This ensures all commands and subprocesses are properly interrupted on Ctrl-C.

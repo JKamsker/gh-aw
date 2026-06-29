@@ -9,6 +9,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const forkSelfContainedTestSHA = "3b56b87848f3ea03f923c7fb829eaec2c1db1a93"
+
+type staticSHAResolver struct {
+	sha string
+}
+
+func (r staticSHAResolver) ResolveSHA(ctx context.Context, repo, version string) (string, error) {
+	return r.sha, nil
+}
+
+func withSourceRepo(t *testing.T, repo string) {
+	t.Helper()
+	original := GetSourceRepo()
+	SetSourceRepo(repo)
+	t.Cleanup(func() {
+		SetSourceRepo(original)
+	})
+}
+
 func TestConvertToRemoteActionRef(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -110,6 +129,82 @@ func TestConvertToRemoteActionRef(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultActionsRepoForSourceRepo(t *testing.T) {
+	assert.Equal(t, GitHubActionsOrgRepo, defaultActionsRepoForSource(""))
+	assert.Equal(t, GitHubActionsOrgRepo, defaultActionsRepoForSource(GitHubOrgRepo))
+	assert.Equal(t, GitHubActionsOrgRepo, defaultActionsRepoForSource("github/gh-aw/"))
+	assert.Equal(t, "JKamsker/gh-aw/actions", defaultActionsRepoForSource("JKamsker/gh-aw"))
+	assert.Equal(t, "example/gh-aw/actions", defaultActionsRepoForSource("/example/gh-aw/"))
+}
+
+func TestForkSourceRepoActionModeUsesForkActionsRepo(t *testing.T) {
+	withSourceRepo(t, "JKamsker/gh-aw")
+
+	compiler := NewCompiler(WithVersion("v0.82.0-jk.1"))
+	compiler.SetActionMode(ActionModeAction)
+
+	assert.Equal(t, "JKamsker/gh-aw/actions", compiler.EffectiveActionsRepo())
+
+	ref := resolveSetupActionRef(
+		context.Background(),
+		ActionModeAction,
+		"v0.82.0-jk.1",
+		"",
+		staticSHAResolver{sha: forkSelfContainedTestSHA},
+		compiler.effectiveActionsRepo(),
+		compiler.effectiveSourceRepo(),
+	)
+
+	assert.Equal(t, "JKamsker/gh-aw/actions/setup@"+forkSelfContainedTestSHA+" # v0.82.0-jk.1", ref)
+}
+
+func TestExplicitActionsRepoOverridesForkDefault(t *testing.T) {
+	withSourceRepo(t, "JKamsker/gh-aw")
+
+	compiler := NewCompiler(WithVersion("v0.82.0-jk.1"))
+	compiler.SetActionMode(ActionModeAction)
+	compiler.SetActionsRepo("custom/gh-aw-actions")
+
+	assert.Equal(t, "custom/gh-aw-actions", compiler.EffectiveActionsRepo())
+
+	ref := resolveSetupActionRef(
+		context.Background(),
+		ActionModeAction,
+		"v0.82.0-jk.1",
+		"",
+		staticSHAResolver{sha: forkSelfContainedTestSHA},
+		compiler.effectiveActionsRepo(),
+		compiler.effectiveSourceRepo(),
+	)
+
+	assert.Equal(t, "custom/gh-aw-actions/setup@"+forkSelfContainedTestSHA+" # v0.82.0-jk.1", ref)
+}
+
+func TestForkSourceRepoReleaseModeUsesForkSourceRepo(t *testing.T) {
+	withSourceRepo(t, "JKamsker/gh-aw")
+
+	ref := ResolveSetupActionReference(
+		context.Background(),
+		ActionModeRelease,
+		"v0.82.0-jk.1",
+		"",
+		staticSHAResolver{sha: forkSelfContainedTestSHA},
+	)
+
+	assert.Equal(t, "JKamsker/gh-aw/actions/setup@"+forkSelfContainedTestSHA+" # v0.82.0-jk.1", ref)
+}
+
+func TestForkSourceRepoConvertsLocalReleaseActions(t *testing.T) {
+	withSourceRepo(t, "JKamsker/gh-aw")
+
+	compiler := NewCompiler(WithVersion("v0.82.0-jk.1"))
+	compiler.SetActionMode(ActionModeRelease)
+
+	ref := compiler.convertToRemoteActionRef("./actions/create-issue", &WorkflowData{})
+
+	assert.Equal(t, "JKamsker/gh-aw/actions/create-issue@v0.82.0-jk.1", ref)
 }
 
 func TestResolveActionReference(t *testing.T) {

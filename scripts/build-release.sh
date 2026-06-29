@@ -6,9 +6,15 @@ set +o histexpand
 set -e
 
 VERSION="$1"
+SOURCE_REPO="${GH_AW_SOURCE_REPO:-${2:-github/gh-aw}}"
 
 if [ -z "$VERSION" ]; then
   echo "error: VERSION argument is required" >&2
+  exit 1
+fi
+
+if [ -z "$SOURCE_REPO" ]; then
+  echo "error: SOURCE_REPO must not be empty" >&2
   exit 1
 fi
 
@@ -28,6 +34,7 @@ platforms=(
 )
 
 echo "Building binaries with version: $VERSION"
+echo "Embedding source repository: $SOURCE_REPO"
 
 # Create dist directory if it doesn't exist
 mkdir -p dist
@@ -54,7 +61,7 @@ for p in "${platforms[@]}"; do
   # (Alpine uses musl libc, not glibc, so dynamically-linked binaries fail)
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
     -trimpath \
-    -ldflags="-s -w -X main.version=${VERSION} -X main.isRelease=true" \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.isRelease=true -X main.sourceRepo=${SOURCE_REPO}" \
     -o "dist/${p}${ext}" \
     ./cmd/gh-aw
   

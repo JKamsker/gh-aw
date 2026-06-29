@@ -153,13 +153,15 @@ All GitHub Actions are pinned to commit SHAs (e.g., `actions/checkout@b4ffde6...
 
 ## The gh-aw-actions Repository
 
-`github/gh-aw-actions` contains the reusable actions that power compiled workflows. Every action step in a generated `.lock.yml` references it (usually by commit SHA, occasionally by a stable tag like `v0` when SHA resolution is unavailable):
+Upstream releases use `github/gh-aw-actions`, which contains the reusable actions that power compiled workflows. Every action step in a generated `.lock.yml` from an upstream release references it (usually by commit SHA, occasionally by a stable tag like `v0` when SHA resolution is unavailable):
 
 ```yaml
 uses: github/gh-aw-actions/setup@abc1234...
 ```
 
 Never edit these references by hand — run `gh aw compile` or `gh aw update-actions` to regenerate them. Use `--actions-repo` (with `--action-mode action`) to compile against a fork or specific tag during development; see [Compilation Commands](#compilation-commands).
+
+Fork release binaries can stamp their source repository at build time. When that source repository is not `github/gh-aw`, action mode defaults to `<source-repo>/actions` instead of `github/gh-aw-actions`, so workflows compiled from the forked binary are self-contained in the fork. For example, a release built from `JKamsker/gh-aw` emits references such as `JKamsker/gh-aw/actions/setup@<sha> # <tag>` without requiring `--actions-repo`.
 
 ### Dependabot and gh-aw-actions
 
@@ -243,7 +245,7 @@ Pre-activation runs gating checks sequentially before any AI execution. Any fail
 > Compilation is only required when changing **frontmatter configuration**. The **markdown body** (AI instructions) is loaded at runtime and can be edited without recompilation. See [Editing Workflows](/gh-aw/guides/editing-workflows/) for details.
 
 > [!NOTE]
-> The `--actions-repo` flag overrides the default `github/gh-aw-actions` repository used when `--action-mode action` is set. Use it together with `--action-tag` to compile against a branch or fork during development.
+> The `--actions-repo` flag overrides the default action-mode repository used when `--action-mode action` is set. Upstream releases default to `github/gh-aw-actions`; fork release binaries stamped with a different source repository default to `<source-repo>/actions`. Use `--actions-repo` together with `--action-tag` to compile against a branch or fork during development.
 
 ## Debugging Compilation
 
