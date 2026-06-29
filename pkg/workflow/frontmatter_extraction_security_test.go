@@ -39,6 +39,34 @@ func TestExtractAgentSandboxConfigPlatform(t *testing.T) {
 	})
 }
 
+func TestExtractAgentSandboxConfigTargets(t *testing.T) {
+	compiler := &Compiler{}
+
+	t.Run("extracts sandbox.agent.targets from object format", func(t *testing.T) {
+		agentObj := map[string]any{
+			"id": "awf",
+			"targets": map[string]any{
+				"openai": map[string]any{
+					"authHeader":      "api-key",
+					"base-url-secret": "CODEX_LB_BASE_URL",
+				},
+				"anthropic": map[string]any{
+					"authHeader": "x-custom-key",
+				},
+			},
+		}
+
+		config := compiler.extractAgentSandboxConfig(agentObj)
+		require.NotNil(t, config, "Should extract agent sandbox config")
+		require.NotNil(t, config.Targets, "Should extract targets")
+		require.NotNil(t, config.Targets["openai"], "Should extract openai target")
+		assert.Equal(t, "api-key", config.Targets["openai"].AuthHeader)
+		assert.Equal(t, "CODEX_LB_BASE_URL", config.Targets["openai"].BaseURLSecret)
+		require.NotNil(t, config.Targets["anthropic"], "Should extract anthropic target")
+		assert.Equal(t, "x-custom-key", config.Targets["anthropic"].AuthHeader)
+	})
+}
+
 func TestExtractAgentSandboxConfigSudo(t *testing.T) {
 	compiler := &Compiler{}
 

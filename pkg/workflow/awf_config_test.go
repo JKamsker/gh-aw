@@ -666,6 +666,43 @@ func TestBuildAWFConfigJSON(t *testing.T) {
 		assert.NotContains(t, jsonStr, `"host":""`, "should not emit empty host when only authHeader is set")
 	})
 
+	t.Run("openai base-url-secret is patched at runtime without a committed host", func(t *testing.T) {
+		config := AWFCommandConfig{
+			EngineName:     "codex",
+			EngineCommand:  "codex exec --prompt-file /tmp/gh-aw/aw-prompts/prompt.txt",
+			LogFile:        "/tmp/gh-aw/codex.log",
+			AllowedDomains: "github.com",
+			WorkflowData: &WorkflowData{
+				EngineConfig: &EngineConfig{ID: "codex"},
+				NetworkPermissions: &NetworkPermissions{
+					Firewall: &FirewallConfig{Enabled: true},
+				},
+				SandboxConfig: &SandboxConfig{
+					Agent: &AgentSandboxConfig{
+						Targets: map[string]*AgentAPIProxyTargetConfig{
+							"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+						},
+					},
+				},
+			},
+		}
+
+		jsonStr, err := BuildAWFConfigJSON(config)
+		require.NoError(t, err)
+		assert.NotContains(t, jsonStr, "CODEX_LB_BASE_URL", "secret-backed endpoint name should not be written into AWF config JSON")
+		assert.NotContains(t, jsonStr, "llm-router.internal.example.com", "concrete endpoint hosts should not be written into AWF config JSON")
+
+		command := BuildAWFCommand(config)
+		assert.Contains(t, command, `secret_name = "CODEX_LB_BASE_URL"`, "runtime patch should read the configured secret")
+		assert.Contains(t, command, `urllib.parse.urlsplit(endpoint)`, "runtime patch should parse the secret URL")
+		assert.Contains(t, command, `print(f"::add-mask::{value}")`, "runtime patch should mask derived values")
+		assert.Contains(t, command, `allow_domains.append(host)`, "runtime patch should add the derived host to the firewall allow-list")
+		assert.Contains(t, command, `openai["host"] = target_host`, "runtime patch should set the OpenAI proxy host")
+		assert.Contains(t, command, `openai["basePath"] = base_path`, "runtime patch should set the OpenAI proxy base path")
+		assert.Contains(t, command, `/backend-api/codex`, "runtime patch should support the gh-aw-ext OpenAI path mapping")
+		assert.NotContains(t, command, "llm-router.internal.example.com", "runtime command should not contain a concrete endpoint host")
+	})
+
 	t.Run("anthropic authHeader from frontmatter sandbox.agent.targets is included", func(t *testing.T) {
 		config := AWFCommandConfig{
 			EngineName:     "claude",

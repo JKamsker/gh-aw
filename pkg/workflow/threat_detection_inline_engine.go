@@ -131,7 +131,8 @@ func (c *Compiler) buildDetectionEngineExecutionStep(data *WorkflowData) []strin
 		},
 		SandboxConfig: &SandboxConfig{
 			Agent: &AgentSandboxConfig{
-				Type: SandboxTypeAWF,
+				Type:    SandboxTypeAWF,
+				Targets: cloneAgentAPITargets(data),
 			},
 		},
 	}

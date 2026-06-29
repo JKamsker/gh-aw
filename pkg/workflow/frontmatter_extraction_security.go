@@ -261,6 +261,11 @@ func (c *Compiler) extractAgentSandboxConfig(agentVal any) *AgentSandboxConfig {
 		}
 	}
 
+	// Extract per-provider API proxy target overrides.
+	if targetsVal, hasTargets := agentObj["targets"]; hasTargets {
+		agentConfig.Targets = c.extractAgentAPITargets(targetsVal)
+	}
+
 	// Extract model-fallback (AWF API proxy model fallback enable/disable flag)
 	if mfVal, hasMF := agentObj["model-fallback"]; hasMF {
 		switch v := mfVal.(type) {
@@ -281,6 +286,42 @@ func (c *Compiler) extractAgentSandboxConfig(agentVal any) *AgentSandboxConfig {
 	}
 
 	return agentConfig
+}
+
+func (c *Compiler) extractAgentAPITargets(targetsVal any) map[string]*AgentAPIProxyTargetConfig {
+	targetsObj, ok := targetsVal.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	targets := make(map[string]*AgentAPIProxyTargetConfig)
+	for provider, rawTarget := range targetsObj {
+		targetObj, ok := rawTarget.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		target := &AgentAPIProxyTargetConfig{}
+		if authHeaderVal, hasAuthHeader := targetObj["authHeader"]; hasAuthHeader {
+			if authHeader, ok := authHeaderVal.(string); ok {
+				target.AuthHeader = authHeader
+			}
+		}
+		if baseURLSecretVal, hasBaseURLSecret := targetObj["base-url-secret"]; hasBaseURLSecret {
+			if baseURLSecret, ok := baseURLSecretVal.(string); ok {
+				target.BaseURLSecret = baseURLSecret
+			}
+		}
+
+		if target.AuthHeader != "" || target.BaseURLSecret != "" {
+			targets[provider] = target
+		}
+	}
+
+	if len(targets) == 0 {
+		return nil
+	}
+	return targets
 }
 
 // extractMCPGatewayConfig extracts MCP gateway configuration from frontmatter

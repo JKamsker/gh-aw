@@ -354,6 +354,11 @@ fi`,
 				configFileSetup += "\n" + updateScript
 			}
 		}
+		if config.EngineName == "codex" {
+			if patchScript := buildOpenAIBaseURLSecretConfigPatchScript(config.WorkflowData); patchScript != "" {
+				configFileSetup += "\n" + patchScript
+			}
+		}
 		configFileSetup += fmt.Sprintf("\ncp %q %s", awfConfigRuntimePathExpr, constants.AWFConfigFilePath)
 		// Add --config as the first expandable arg so it appears before --container-workdir.
 		expandableArgs = fmt.Sprintf("--config %q ", awfConfigRuntimePathExpr) + expandableArgs
@@ -823,6 +828,7 @@ func WrapCommandInShell(command string) string {
 // The function augments coreSecretVarNames with:
 //   - MCP_GATEWAY_API_KEY when MCP servers are present
 //   - GITHUB_MCP_SERVER_TOKEN when the GitHub tool is present
+//   - API proxy base URL secret var names from sandbox.agent.targets
 //   - HTTP MCP header secret var names (values always contain ${{ secrets.* }})
 //   - mcp-scripts env var names whose values contain ${{ secrets.* }}
 //   - engine.env var names whose values contain ${{ secrets.* }}
@@ -853,6 +859,10 @@ func ComputeAWFExcludeEnvVarNames(workflowData *WorkflowData, coreSecretVarNames
 	// GitHub MCP server token is always a secret when the GitHub tool is present.
 	if hasGitHubTool(workflowData.ParsedTools) {
 		addUnique("GITHUB_MCP_SERVER_TOKEN")
+	}
+
+	for _, secretName := range collectAPITargetBaseURLSecretNames(workflowData) {
+		addUnique(secretName)
 	}
 
 	// HTTP MCP header secrets: values are always ${{ secrets.* }} references.

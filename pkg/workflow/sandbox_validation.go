@@ -24,6 +24,7 @@ var sandboxValidationLog = newValidationLogger("sandbox")
 const minSandboxDisableJustificationLength = 20
 
 var githubActionsExpressionPattern = regexp.MustCompile(`\$\{\{[\s\S]*\}\}`)
+var apiTargetBaseURLSecretNamePattern = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 // validateMountsSyntax validates that mount strings follow the correct syntax
 // Expected format: "source:destination:mode" where mode is either "ro" or "rw"
@@ -108,6 +109,9 @@ func validateSandboxConfig(workflowData *WorkflowData) error {
 			return err
 		}
 	}
+	if err := validateAgentAPITargets(workflowData, agentConfig); err != nil {
+		return err
+	}
 
 	// Validate config structure if provided (deprecated - was only for SRT)
 	if sandboxConfig.Config != nil {
@@ -142,6 +146,63 @@ func validateSandboxConfig(workflowData *WorkflowData) error {
 			)
 		}
 		sandboxValidationLog.Print("Agent sandbox enabled with MCP gateway - validation passed")
+	}
+
+	return nil
+}
+
+func validateAgentAPITargets(workflowData *WorkflowData, agentConfig *AgentSandboxConfig) error {
+	if agentConfig == nil || len(agentConfig.Targets) == 0 {
+		return nil
+	}
+
+	for provider, target := range agentConfig.Targets {
+		switch provider {
+		case "openai", "anthropic":
+		default:
+			return NewConfigurationError(
+				fmt.Sprintf("sandbox.agent.targets.%s", provider),
+				provider,
+				"unsupported API proxy target provider",
+				"Use one of: openai, anthropic.",
+			)
+		}
+		if target == nil || target.BaseURLSecret == "" {
+			continue
+		}
+		path := fmt.Sprintf("sandbox.agent.targets.%s.base-url-secret", provider)
+		if provider != "openai" {
+			return NewConfigurationError(
+				path,
+				target.BaseURLSecret,
+				"base-url-secret is only supported for the OpenAI API proxy target",
+				"Move base-url-secret under sandbox.agent.targets.openai or use a literal provider endpoint supported by the engine.",
+			)
+		}
+		if !apiTargetBaseURLSecretNamePattern.MatchString(target.BaseURLSecret) {
+			return NewValidationError(
+				path,
+				target.BaseURLSecret,
+				"secret name must use GitHub Actions environment variable syntax: uppercase letters, digits, and underscores, starting with a letter or underscore",
+				"Use a secret name such as CODEX_LB_BASE_URL.",
+			)
+		}
+		if !isFirewallEnabled(workflowData) {
+			return NewConfigurationError(
+				path,
+				target.BaseURLSecret,
+				"secret-backed OpenAI endpoints require AWF so the endpoint secret is used only by runner-side setup",
+				"Enable sandbox.agent/AWF for this workflow or remove base-url-secret.",
+			)
+		}
+		if !awfSupportsExcludeEnv(getFirewallConfig(workflowData)) {
+			return NewConfigurationError(
+				path,
+				target.BaseURLSecret,
+				fmt.Sprintf("secret-backed OpenAI endpoints require AWF %s or newer so the endpoint secret can be excluded from the agent container", constants.AWFExcludeEnvMinVersion),
+				"Remove the older sandbox.agent.version/network.firewall.version pin or upgrade it.",
+			)
+		}
 	}
 
 	return nil

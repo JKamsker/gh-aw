@@ -276,7 +276,8 @@ func (c *Compiler) buildExternalDetectorExecutionStep(data *WorkflowData) []stri
 		},
 		SandboxConfig: &SandboxConfig{
 			Agent: &AgentSandboxConfig{
-				Type: SandboxTypeAWF,
+				Type:    SandboxTypeAWF,
+				Targets: cloneAgentAPITargets(data),
 				// Add a read-write mount so the threat-detect binary can write
 				// detection_result.json inside the container and it becomes visible
 				// on the host through the bind mount.

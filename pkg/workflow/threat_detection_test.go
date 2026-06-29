@@ -2146,6 +2146,80 @@ func TestBuildDetectionEngineExecutionStepUsesCopilotForPi(t *testing.T) {
 	}
 }
 
+func TestBuildDetectionEngineExecutionStepPropagatesSecretBackedOpenAIEndpoint(t *testing.T) {
+	compiler := NewCompiler()
+
+	data := &WorkflowData{
+		AI: "codex",
+		EngineConfig: &EngineConfig{
+			ID: "codex",
+		},
+		SafeOutputs: &SafeOutputsConfig{
+			ThreatDetection: &ThreatDetectionConfig{},
+		},
+		SandboxConfig: &SandboxConfig{
+			Agent: &AgentSandboxConfig{
+				Targets: map[string]*AgentAPIProxyTargetConfig{
+					"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+				},
+			},
+		},
+	}
+
+	steps := compiler.buildDetectionEngineExecutionStep(data)
+	if len(steps) == 0 {
+		t.Fatal("expected non-empty steps")
+	}
+
+	rendered := strings.Join(steps, "")
+	if !strings.Contains(rendered, `secret_name = "CODEX_LB_BASE_URL"`) {
+		t.Fatalf("expected detection AWF config patch to reference the endpoint secret name, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "--exclude-env CODEX_LB_BASE_URL") {
+		t.Fatalf("expected detection AWF command to exclude the endpoint secret, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "CODEX_LB_BASE_URL: ${{ secrets.CODEX_LB_BASE_URL }}") {
+		t.Fatalf("expected detection step env to include the endpoint secret reference, got:\n%s", rendered)
+	}
+}
+
+func TestBuildExternalDetectorExecutionStepPropagatesSecretBackedOpenAIEndpoint(t *testing.T) {
+	compiler := NewCompiler()
+
+	data := &WorkflowData{
+		AI: "codex",
+		EngineConfig: &EngineConfig{
+			ID: "codex",
+		},
+		SafeOutputs: &SafeOutputsConfig{
+			ThreatDetection: &ThreatDetectionConfig{},
+		},
+		SandboxConfig: &SandboxConfig{
+			Agent: &AgentSandboxConfig{
+				Targets: map[string]*AgentAPIProxyTargetConfig{
+					"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+				},
+			},
+		},
+	}
+
+	steps := compiler.buildExternalDetectorExecutionStep(data)
+	if len(steps) == 0 {
+		t.Fatal("expected non-empty steps")
+	}
+
+	rendered := strings.Join(steps, "")
+	if !strings.Contains(rendered, `secret_name = "CODEX_LB_BASE_URL"`) {
+		t.Fatalf("expected external detection AWF config patch to reference the endpoint secret name, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "--exclude-env CODEX_LB_BASE_URL") {
+		t.Fatalf("expected external detection AWF command to exclude the endpoint secret, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "CODEX_LB_BASE_URL: ${{ secrets.CODEX_LB_BASE_URL }}") {
+		t.Fatalf("expected external detection step env to include the endpoint secret reference, got:\n%s", rendered)
+	}
+}
+
 // TestDetectionJobEnvironmentInheritance verifies that the detection job correctly
 // handles all three environment wiring scenarios:
 //  1. No environment configured → detection job has no environment field.

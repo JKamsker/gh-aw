@@ -326,4 +326,24 @@ func TestGetRequiredSecretNames_Codex(t *testing.T) {
 		assert.Contains(t, secrets, "OPENAI_API_KEY")
 		assert.Contains(t, secrets, "MCP_GATEWAY_API_KEY")
 	})
+
+	t.Run("includes secret-backed OpenAI base URL", func(t *testing.T) {
+		workflowData := &WorkflowData{
+			Tools:       map[string]any{},
+			ParsedTools: &ToolsConfig{},
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Targets: map[string]*AgentAPIProxyTargetConfig{
+						"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+					},
+				},
+			},
+		}
+
+		secrets := engine.GetRequiredSecretNames(workflowData)
+
+		assert.Contains(t, secrets, "CODEX_API_KEY")
+		assert.Contains(t, secrets, "OPENAI_API_KEY")
+		assert.Contains(t, secrets, "CODEX_LB_BASE_URL")
+	})
 }

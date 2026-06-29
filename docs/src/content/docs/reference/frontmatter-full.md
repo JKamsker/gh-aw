@@ -1934,14 +1934,20 @@ sandbox:
     # config JSON.
     # (optional)
     targets:
-      # AWF API proxy target configuration for a single LLM provider.
+      # AWF API proxy target configuration for the OpenAI provider.
       # (optional)
       openai:
         # Custom authentication header name to use when forwarding requests to this
-        # provider's API. Overrides the provider default ("Authorization" for OpenAI,
-        # "x-api-key" for Anthropic). Example: "api-key" for Azure OpenAI gateways.
+        # provider's API. Overrides the provider default ("Authorization" for OpenAI).
+        # Example: "api-key" for Azure OpenAI gateways.
         # (optional)
         authHeader: "example-value"
+
+        # GitHub Actions secret name containing the OpenAI-compatible base URL. The
+        # compiler emits only the secret name; AWF setup reads, validates, masks, and
+        # derives the API proxy host at runtime.
+        # (optional)
+        base-url-secret: "CODEX_LB_BASE_URL"
 
       # AWF API proxy target configuration for a single LLM provider.
       # (optional)

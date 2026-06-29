@@ -210,3 +210,86 @@ func TestValidateSandboxConfigStoresJustification(t *testing.T) {
 	assert.Equal(t, reason, workflowData.SandboxConfig.Agent.DisableReason,
 		"justification must be stored on AgentSandboxConfig for audit/logging")
 }
+
+func TestValidateAgentAPITargets(t *testing.T) {
+	t.Run("rejects unsupported provider", func(t *testing.T) {
+		err := validateSandboxConfig(&WorkflowData{
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Targets: map[string]*AgentAPIProxyTargetConfig{
+						"gemini": {AuthHeader: "api-key"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported API proxy target provider")
+	})
+
+	t.Run("rejects base-url-secret on non-openai provider", func(t *testing.T) {
+		err := validateSandboxConfig(&WorkflowData{
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Targets: map[string]*AgentAPIProxyTargetConfig{
+						"anthropic": {BaseURLSecret: "ANTHROPIC_BASE_URL_SECRET"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "only supported for the OpenAI API proxy target")
+	})
+
+	t.Run("rejects invalid base-url-secret name", func(t *testing.T) {
+		err := validateSandboxConfig(&WorkflowData{
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Targets: map[string]*AgentAPIProxyTargetConfig{
+						"openai": {BaseURLSecret: "codex-lb-base-url"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "secret name must use GitHub Actions environment variable syntax")
+	})
+
+	t.Run("rejects old AWF version that cannot exclude the endpoint secret", func(t *testing.T) {
+		err := validateSandboxConfig(&WorkflowData{
+			NetworkPermissions: &NetworkPermissions{
+				Firewall: &FirewallConfig{
+					Enabled: true,
+					Version: "v0.25.0",
+				},
+			},
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Targets: map[string]*AgentAPIProxyTargetConfig{
+						"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "require AWF")
+	})
+
+	t.Run("rejects base-url-secret when AWF is disabled", func(t *testing.T) {
+		err := validateSandboxConfig(&WorkflowData{
+			NetworkPermissions: &NetworkPermissions{
+				Firewall: &FirewallConfig{
+					Enabled: false,
+				},
+			},
+			SandboxConfig: &SandboxConfig{
+				Agent: &AgentSandboxConfig{
+					Targets: map[string]*AgentAPIProxyTargetConfig{
+						"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+					},
+				},
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "require AWF")
+	})
+}

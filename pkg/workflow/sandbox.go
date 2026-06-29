@@ -70,6 +70,12 @@ type AgentAPIProxyTargetConfig struct {
 	// provider default ("Authorization" for OpenAI, "x-api-key" for Anthropic).
 	// Example: "api-key" for Azure OpenAI gateways.
 	AuthHeader string `yaml:"authHeader,omitempty"`
+
+	// BaseURLSecret names a GitHub Actions secret containing the provider base URL.
+	// The secret value is read only by the runner-side AWF setup script, which
+	// validates the URL, derives the proxy target host and firewall allow-domain,
+	// and excludes the secret from the agent container environment.
+	BaseURLSecret string `yaml:"base-url-secret,omitempty"`
 }
 
 // SandboxRuntimeConfig represents the Anthropic Sandbox Runtime configuration

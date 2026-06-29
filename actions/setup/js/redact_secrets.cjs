@@ -126,6 +126,52 @@ function extractMCPGatewayTokens(configPaths) {
 }
 
 /**
+ * Derives URL components that may appear in AWF config and logs from a secret URL.
+ * @param {string} secretValue - Raw secret value
+ * @returns {string[]} Derived values to redact
+ */
+function deriveURLSecretValues(secretValue) {
+  const trimmed = secretValue.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  try {
+    const url = new URL(trimmed.replace(/\/+$/, ""));
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return [];
+    }
+
+    const values = [trimmed, url.toString().replace(/\/+$/, ""), url.host, url.hostname];
+    if (url.port) {
+      values.push(`${url.hostname}:${url.port}`);
+    }
+    return [...new Set(values.filter(Boolean))];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Expands configured secret values with safe derived forms that may appear in artifacts.
+ * @param {string[]} secretValues - Raw secret values
+ * @returns {string[]} Raw and derived secret values
+ */
+function expandSecretValues(secretValues) {
+  const expanded = new Set();
+  for (const secretValue of secretValues) {
+    if (!secretValue) {
+      continue;
+    }
+    expanded.add(secretValue);
+    for (const derivedValue of deriveURLSecretValues(secretValue)) {
+      expanded.add(derivedValue);
+    }
+  }
+  return [...expanded];
+}
+
+/**
  * Detects and redacts secrets matching built-in patterns
  * @param {string} content - File content to process
  * @returns {{content: string, redactionCount: number, detectedPatterns: string[]}} Redacted content, count, and detected pattern types
@@ -252,6 +298,10 @@ async function main() {
       core.info(`Found ${gatewayTokens.length} MCP gateway token(s) to redact`);
       secretValues.push(...gatewayTokens);
     }
+    const expandedSecretValues = expandSecretValues(secretValues);
+    if (expandedSecretValues.length > secretValues.length) {
+      core.info(`Expanded custom redaction set to ${expandedSecretValues.length} value(s)`);
+    }
 
     // Always scan for built-in patterns, even if there are no custom secrets
     core.info("Scanning for built-in credential patterns and custom secrets");
@@ -266,7 +316,7 @@ async function main() {
     let filesWithRedactions = 0;
     // Process each file
     for (const file of files) {
-      const redactionCount = processFile(file, secretValues);
+      const redactionCount = processFile(file, expandedSecretValues);
       if (redactionCount > 0) {
         filesWithRedactions++;
         totalRedactions += redactionCount;
@@ -282,4 +332,4 @@ async function main() {
   }
 }
 
-module.exports = { main, redactSecrets, redactBuiltInPatterns, extractMCPGatewayTokens, BUILT_IN_PATTERNS, MCP_GATEWAY_CONFIG_PATHS };
+module.exports = { main, redactSecrets, redactBuiltInPatterns, extractMCPGatewayTokens, deriveURLSecretValues, expandSecretValues, BUILT_IN_PATTERNS, MCP_GATEWAY_CONFIG_PATHS };

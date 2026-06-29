@@ -216,6 +216,50 @@ func TestCodexEngineExecutionUsesWritableCodexHome(t *testing.T) {
 	}
 }
 
+func TestCodexEngineSecretBackedOpenAIEndpoint(t *testing.T) {
+	engine := NewCodexEngine()
+
+	workflowData := &WorkflowData{
+		Name: "test-workflow",
+		EngineConfig: &EngineConfig{
+			ID: "codex",
+		},
+		NetworkPermissions: &NetworkPermissions{
+			Firewall: &FirewallConfig{Enabled: true},
+		},
+		SandboxConfig: &SandboxConfig{
+			Agent: &AgentSandboxConfig{
+				Type: SandboxTypeAWF,
+				Targets: map[string]*AgentAPIProxyTargetConfig{
+					"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+				},
+			},
+		},
+	}
+
+	steps := engine.GetExecutionSteps(workflowData, "/tmp/gh-aw/test.log")
+	if len(steps) == 0 {
+		t.Fatal("Expected at least one execution step")
+	}
+
+	stepContent := strings.Join([]string(steps[0]), "\n")
+	if !strings.Contains(stepContent, "CODEX_LB_BASE_URL: ${{ secrets.CODEX_LB_BASE_URL }}") {
+		t.Errorf("Expected endpoint secret to be available to the runner step, got:\n%s", stepContent)
+	}
+	if !strings.Contains(stepContent, "--exclude-env CODEX_LB_BASE_URL") {
+		t.Errorf("Expected endpoint secret to be excluded from the AWF agent container, got:\n%s", stepContent)
+	}
+	if !strings.Contains(stepContent, `secret_name = "CODEX_LB_BASE_URL"`) {
+		t.Errorf("Expected runtime AWF config patch to reference the secret name, got:\n%s", stepContent)
+	}
+	if !strings.Contains(stepContent, "/backend-api/codex") {
+		t.Errorf("Expected runtime patch to include the gh-aw-ext OpenAI path mapping, got:\n%s", stepContent)
+	}
+	if strings.Contains(stepContent, "llm-router.internal.example.com") {
+		t.Errorf("Did not expect a concrete endpoint host in the compiled step, got:\n%s", stepContent)
+	}
+}
+
 func TestCodexEngineRenderMCPConfig(t *testing.T) {
 	engine := NewCodexEngine()
 

@@ -246,6 +246,10 @@ type AWFAPITargetConfig struct {
 	// Host is the hostname (and optional port) of the API endpoint.
 	Host string `json:"host,omitempty"`
 
+	// BasePath is the path prefix to add when forwarding requests to this API endpoint.
+	// Example: "/backend-api/codex" for OpenAI-compatible gateways with path-based routing.
+	BasePath string `json:"basePath,omitempty"`
+
 	// AuthHeader is the custom authentication header name sent with API requests.
 	// When set, the raw API key is sent as "<authHeader>: <key>" instead of the
 	// provider default (e.g. "Authorization: ******" for OpenAI, or

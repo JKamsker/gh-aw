@@ -74,6 +74,20 @@ describe("redact_secrets.cjs", () => {
             expect(fs.readFileSync(path.join(tempDir, "test2.json"), "utf8")).toBe('{"key": "***REDACTED***"}'),
             expect(fs.readFileSync(path.join(tempDir, "test3.log"), "utf8")).toBe("Log: ***REDACTED***"));
         }),
+        it("should redact URL secret derived host values", async () => {
+          const testFile = path.join(tempDir, "endpoint.log"),
+            secretValue = "https://secret-lb.internal:8443/openai/v1/";
+          (fs.writeFileSync(testFile, "full=https://secret-lb.internal:8443/openai/v1/\nnormalized=https://secret-lb.internal:8443/openai/v1\nhost=secret-lb.internal\ntarget=secret-lb.internal:8443"),
+            (process.env.GH_AW_SECRET_NAMES = "CODEX_LB_BASE_URL"),
+            (process.env.SECRET_CODEX_LB_BASE_URL = secretValue));
+          const modifiedScript = redactScript.replace('findFiles("/tmp/gh-aw", targetExtensions)', `findFiles("${tempDir.replace(/\\/g, "\\\\")}", targetExtensions)`);
+          await eval(`(async () => { ${modifiedScript}; await main(); })()`);
+          const redacted = fs.readFileSync(testFile, "utf8");
+          (expect(redacted).not.toContain("secret-lb.internal"),
+            expect(redacted).not.toContain("https://secret-lb.internal:8443/openai/v1"),
+            expect(redacted).toContain("***REDACTED***"),
+            expect(mockCore.info).toHaveBeenCalledWith(expect.stringContaining("Expanded custom redaction set")));
+        }),
         it("should use core.info for logging hits", async () => {
           const testFile = path.join(tempDir, "test.txt"),
             secretValue = "sk-1234567890";

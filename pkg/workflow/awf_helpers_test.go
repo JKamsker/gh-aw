@@ -360,6 +360,39 @@ func TestExtractAPITargetAuthHeader(t *testing.T) {
 	})
 }
 
+func TestExtractAPITargetBaseURLSecret(t *testing.T) {
+	workflowData := &WorkflowData{
+		SandboxConfig: &SandboxConfig{
+			Agent: &AgentSandboxConfig{
+				Targets: map[string]*AgentAPIProxyTargetConfig{
+					"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, "CODEX_LB_BASE_URL", extractAPITargetBaseURLSecret(workflowData, "openai"))
+	assert.Empty(t, extractAPITargetBaseURLSecret(workflowData, "anthropic"))
+	assert.Empty(t, extractAPITargetBaseURLSecret(nil, "openai"))
+}
+
+func TestComputeAWFExcludeEnvVarNamesIncludesAPITargetBaseURLSecret(t *testing.T) {
+	workflowData := &WorkflowData{
+		Tools:       map[string]any{},
+		ParsedTools: &ToolsConfig{},
+		SandboxConfig: &SandboxConfig{
+			Agent: &AgentSandboxConfig{
+				Targets: map[string]*AgentAPIProxyTargetConfig{
+					"openai": {BaseURLSecret: "CODEX_LB_BASE_URL"},
+				},
+			},
+		},
+	}
+
+	excluded := ComputeAWFExcludeEnvVarNames(workflowData, []string{"CODEX_API_KEY", "OPENAI_API_KEY"})
+	assert.Contains(t, excluded, "CODEX_LB_BASE_URL")
+}
+
 // TestExtractAPIBasePath tests the extractAPIBasePath function that extracts
 // path components from custom API base URLs in engine.env
 func TestExtractAPIBasePath(t *testing.T) {

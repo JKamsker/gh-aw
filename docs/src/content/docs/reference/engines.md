@@ -177,6 +177,24 @@ network:
 
 `GITHUB_COPILOT_BASE_URL` is a fallback — if both it and `engine.api-target` are set, `engine.api-target` takes precedence. Crush uses OpenAI-compatible API format; its `model` field uses `provider/model` format (e.g., `openai/gpt-4o`).
 
+For Codex workflows where the OpenAI-compatible endpoint host must also stay secret, store the full base URL in a GitHub Actions secret and reference only the secret name from `sandbox.agent.targets.openai.base-url-secret`:
+
+```yaml wrap
+engine:
+  id: codex
+  model: gpt-4o
+  env:
+    OPENAI_API_KEY: ${{ secrets.LLM_ROUTER_KEY }}
+
+sandbox:
+  agent:
+    targets:
+      openai:
+        base-url-secret: CODEX_LB_BASE_URL
+```
+
+The secret value must be an absolute `http` or `https` URL without embedded credentials. At runtime, the AWF setup reads the secret on the runner, masks the full URL and derived host values, derives the OpenAI API proxy target and firewall allow-domain, and excludes the secret from the agent container. Do not also set `OPENAI_BASE_URL` for the same endpoint.
+
 ### Copilot Bring Your Own Key (BYOK) Mode
 
 The Copilot engine supports routing requests to an external LLM provider instead of GitHub's default routing. This is useful when you want to use a different model or provider (e.g., OpenAI, Anthropic, Azure OpenAI, or a local Ollama/vLLM instance) while still using the Copilot CLI tooling.

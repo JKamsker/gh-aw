@@ -82,7 +82,9 @@ func (e *CodexEngine) ResolveLLMProvider(workflowData *WorkflowData) string {
 // GetRequiredSecretNames returns the list of secrets required by the Codex engine
 // This includes CODEX_API_KEY, OPENAI_API_KEY, and optionally MCP_GATEWAY_API_KEY and mcp-scripts secrets
 func (e *CodexEngine) GetRequiredSecretNames(workflowData *WorkflowData) []string {
-	return append([]string{"CODEX_API_KEY", "OPENAI_API_KEY"}, collectCommonMCPSecrets(workflowData)...)
+	secrets := []string{"CODEX_API_KEY", "OPENAI_API_KEY"}
+	secrets = append(secrets, collectAPITargetBaseURLSecretNames(workflowData)...)
+	return append(secrets, collectCommonMCPSecrets(workflowData)...)
 }
 
 // GetSupportedEnvVarKeys returns the engine.env variable names that the Codex engine
@@ -460,6 +462,7 @@ mkdir -p "$CODEX_HOME/logs"
 
 	applyEngineCwdEnv(env, workflowData)
 	applyEngineAndAgentEnv(env, workflowData, codexEngineLog)
+	applyAPITargetBaseURLSecretEnv(env, workflowData)
 	applyMCPScriptsSecretEnv(env, workflowData)
 
 	// Generate the step for Codex execution
