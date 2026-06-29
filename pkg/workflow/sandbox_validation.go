@@ -161,7 +161,7 @@ func validateAgentAPITargets(workflowData *WorkflowData, agentConfig *AgentSandb
 		case "openai", "anthropic":
 		default:
 			return NewConfigurationError(
-				fmt.Sprintf("sandbox.agent.targets.%s", provider),
+				"sandbox.agent.targets."+provider,
 				provider,
 				"unsupported API proxy target provider",
 				"Use one of: openai, anthropic.",
@@ -170,7 +170,7 @@ func validateAgentAPITargets(workflowData *WorkflowData, agentConfig *AgentSandb
 		if target == nil || target.BaseURLSecret == "" {
 			continue
 		}
-		path := fmt.Sprintf("sandbox.agent.targets.%s.base-url-secret", provider)
+		path := "sandbox.agent.targets." + provider + ".base-url-secret"
 		if provider != "openai" {
 			return NewConfigurationError(
 				path,
