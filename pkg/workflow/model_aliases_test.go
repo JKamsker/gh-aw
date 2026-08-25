@@ -17,7 +17,7 @@ func TestBuiltinModelAliases(t *testing.T) {
 
 	expectedFamilies := []string{
 		"sonnet", "sonnet-6x", "haiku", "opus", "opusplan",
-		"gpt-5", "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-5-mini", "gpt-5-nano", "gpt-5-codex", "gpt-5-pro", "mai-code", "reasoning",
+		"gpt-5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-5-mini", "gpt-5-nano", "gpt-5-codex", "gpt-5-pro", "mai-code", "reasoning",
 		"gemini-flash", "gemini-flash-lite", "gemini-pro", "gemini-3-pro", "gemini-3-flash", "gemini-3.1-pro", "gemini-3.1-flash", "gemini-3.5-flash", "antigravity", "computer-use", "robotics", "deep-research",
 		"nano-banana",
 		"vision", "image-generation",
@@ -32,7 +32,7 @@ func TestBuiltinModelAliases(t *testing.T) {
 
 	// Vendor aliases should include at least one copilot/* pattern.
 	// Meta-aliases (mini, large, auto) reference other alias names and are excluded here.
-	vendorFamilies := []string{"sonnet", "sonnet-6x", "haiku", "opus", "gpt-5", "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5-mini", "gpt-5-nano", "gpt-5-codex", "gpt-5-pro", "mai-code", "reasoning", "gemini-flash", "gemini-flash-lite", "gemini-pro", "gemini-3-pro", "gemini-3-flash", "gemini-3.1-pro", "gemini-3.1-flash", "gemini-3.5-flash", "antigravity", "nano-banana", "computer-use", "robotics", "deep-research"}
+	vendorFamilies := []string{"sonnet", "sonnet-6x", "haiku", "opus", "gpt-5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5-mini", "gpt-5-nano", "gpt-5-codex", "gpt-5-pro", "mai-code", "reasoning", "gemini-flash", "gemini-flash-lite", "gemini-pro", "gemini-3-pro", "gemini-3-flash", "gemini-3.1-pro", "gemini-3.1-flash", "gemini-3.5-flash", "antigravity", "nano-banana", "computer-use", "robotics", "deep-research"}
 	for _, family := range vendorFamilies {
 		patterns := aliases[family]
 		hasCopilot := false
@@ -54,6 +54,9 @@ func TestBuiltinModelAliases(t *testing.T) {
 	assert.Contains(t, aliases["gemini-3-flash"], "gemini/gemini-3*flash*", "gemini-3-flash should support direct gemini/ provider models")
 	assert.Contains(t, aliases["gemini-3.1-pro"], "gemini/gemini-3.1*pro*", "gemini-3.1-pro should support direct gemini/ provider models")
 	assert.Contains(t, aliases["gemini-3.1-flash"], "gemini/gemini-3.1*flash*", "gemini-3.1-flash should support direct gemini/ provider models")
+	assert.Equal(t, []string{"copilot/gpt-5.6-sol*", "openai/gpt-5.6-sol*"}, aliases["gpt-5.6-sol"], "gpt-5.6-sol should map to copilot/openai provider models")
+	assert.Equal(t, []string{"copilot/gpt-5.6-terra*", "openai/gpt-5.6-terra*"}, aliases["gpt-5.6-terra"], "gpt-5.6-terra should map to copilot/openai provider models")
+	assert.Equal(t, []string{"copilot/gpt-5.6-luna*", "openai/gpt-5.6-luna*"}, aliases["gpt-5.6-luna"], "gpt-5.6-luna should map to copilot/openai provider models")
 	assert.Equal(t, []string{"copilot/gpt-5.5*", "openai/gpt-5.5*"}, aliases["gpt-5.5"], "gpt-5.5 should map to copilot/openai gpt-5.5 family")
 	assert.Equal(t, []string{"copilot/gpt-5.2*", "openai/gpt-5.2*"}, aliases["gpt-5.2"], "gpt-5.2 should map to copilot/openai gpt-5.2 family")
 	assert.Equal(t, []string{"copilot/gpt-5.1*", "openai/gpt-5.1*"}, aliases["gpt-5.1"], "gpt-5.1 should map to copilot/openai gpt-5.1 family")
@@ -134,6 +137,9 @@ func TestBuildAWFConfigJSON_ModelsSection(t *testing.T) {
 		assert.NotEmpty(t, config.WorkflowData.ModelMappings, "ModelMappings should be populated on WorkflowData")
 		assert.Contains(t, config.WorkflowData.ModelMappings, "sonnet", "ModelMappings should include sonnet alias")
 		assert.Contains(t, config.WorkflowData.ModelMappings, "haiku", "ModelMappings should include haiku alias")
+		assert.Equal(t, []string{"copilot/gpt-5.6-sol*", "openai/gpt-5.6-sol*"}, parsed.APIProxy.Models["gpt-5.6-sol"], "AWF config should include the gpt-5.6-sol alias")
+		assert.Equal(t, []string{"copilot/gpt-5.6-terra*", "openai/gpt-5.6-terra*"}, parsed.APIProxy.Models["gpt-5.6-terra"], "AWF config should include the gpt-5.6-terra alias")
+		assert.Equal(t, []string{"copilot/gpt-5.6-luna*", "openai/gpt-5.6-luna*"}, parsed.APIProxy.Models["gpt-5.6-luna"], "AWF config should include the gpt-5.6-luna alias")
 	})
 
 	t.Run("frontmatter override is reflected in WorkflowData and in AWF config JSON", func(t *testing.T) {
