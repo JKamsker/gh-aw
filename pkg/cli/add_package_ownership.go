@@ -430,6 +430,133 @@ func syncManifestManagedResources(ctx context.Context, repoSpec *RepoSpec, pkg *
 	return nil
 }
 
+// refreshManifestManagedOwnership recomputes ownership entries and hashes for the
+// installed package files after successful reconciliation, preserving entries for
+// package files intentionally retained from the previous installation.
+func refreshManifestManagedOwnership(repoSpec *RepoSpec, pkg *resolvedRepositoryPackage, ref, engineOverride string, opts UpdateWorkflowsOptions) error {
+	if repoSpec == nil || pkg == nil {
+		return nil
+	}
+	gitRoot, err := gitutil.FindGitRoot()
+	if err != nil {
+		return fmt.Errorf("failed to find git root for package ownership: %w", err)
+	}
+	packageBase := repositoryPackageIdentifier(repoSpec.RepoSlug, repoSpec.PackagePath)
+	recordPath := packageOwnershipRecordPath(gitRoot, packageBase)
+	record := packageOwnershipRecord{
+		SchemaVersion:  packageOwnershipSchemaVersion,
+		Package:        packageBase,
+		Source:         manifestSourceWithRef(repoSpec, ref),
+		ResolvedCommit: ref,
+		Installer:      "gh-aw " + GetVersion(),
+	}
+	record.Files, err = readExistingPackageOwnershipFiles(gitRoot, recordPath)
+	if err != nil {
+		return err
+	}
+
+	workflowsDir := absolutePackageWorkflowsDir(gitRoot, opts.WorkflowsDir)
+	if err := refreshManifestWorkflowOwnership(gitRoot, workflowsDir, &record, pkg.InstallationSource); err != nil {
+		return err
+	}
+	if err := refreshManifestResourceOwnership(gitRoot, &record, pkg.ResourceFiles); err != nil {
+		return err
+	}
+	for _, skill := range pkg.SkillFiles {
+		destination, err := packageSkillDestinationPath(gitRoot, skill, engineOverride)
+		if err != nil {
+			return err
+		}
+		if err := refreshPackageOwnershipFile(gitRoot, &record, skill.SourcePath, destination); err != nil {
+			return err
+		}
+	}
+	for _, agent := range pkg.AgentFiles {
+		destination := filepath.Join(gitRoot, workflow.GetEngineSubAgentDir(engineOverride), filepath.Base(agent))
+		if err := refreshPackageOwnershipFile(gitRoot, &record, agent, destination); err != nil {
+			return err
+		}
+	}
+
+	slices.SortFunc(record.Files, func(a, b packageOwnershipFileEntry) int {
+		return strings.Compare(a.Destination, b.Destination)
+	})
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode package ownership record: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(recordPath), constants.DirPermPublic); err != nil {
+		return fmt.Errorf("failed to create package ownership directory: %w", err)
+	}
+	if err := os.WriteFile(recordPath, data, constants.FilePermPublic); err != nil {
+		return fmt.Errorf("failed to write package ownership record: %w", err)
+	}
+	return nil
+}
+
+func refreshManifestResourceOwnership(gitRoot string, record *packageOwnershipRecord, resources []resolvedPackageResource) error {
+	for _, resource := range resources {
+		destination := filepath.Join(gitRoot, filepath.FromSlash(resource.DestinationPath))
+		if err := refreshPackageOwnershipFile(gitRoot, record, resource.SourcePath, destination); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readExistingPackageOwnershipFiles(gitRoot, recordPath string) ([]packageOwnershipFileEntry, error) {
+	existing, err := readPackageOwnershipRecord(recordPath)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read package ownership record: %w", err)
+	}
+	return existingPackageOwnershipFiles(gitRoot, existing.Files), nil
+}
+
+func existingPackageOwnershipFiles(gitRoot string, entries []packageOwnershipFileEntry) []packageOwnershipFileEntry {
+	var existing []packageOwnershipFileEntry
+	for _, entry := range entries {
+		destination := filepath.Join(gitRoot, filepath.FromSlash(entry.Destination))
+		if fileutil.FileExists(destination) {
+			existing = append(existing, entry)
+		}
+	}
+	return existing
+}
+
+func refreshManifestWorkflowOwnership(gitRoot, workflowsDir string, record *packageOwnershipRecord, installables []resolvedPackageInstallable) error {
+	for _, installable := range installables {
+		destination := filepath.Join(workflowsDir, filepath.Base(installable.DestinationPath))
+		if err := refreshPackageOwnershipFile(gitRoot, record, installable.SourcePath, destination); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func refreshPackageOwnershipFile(gitRoot string, record *packageOwnershipRecord, source, destination string) error {
+	if err := fileutil.ValidatePathWithinBase(gitRoot, destination); err != nil {
+		return fmt.Errorf("package file %q escapes repository root: %w", destination, err)
+	}
+	digest, err := fileSHA256(destination)
+	if err != nil {
+		return fmt.Errorf("failed to hash package file %s: %w", destination, err)
+	}
+	relative, err := filepath.Rel(gitRoot, destination)
+	if err != nil {
+		return fmt.Errorf("failed to resolve package file destination %s: %w", destination, err)
+	}
+	record.Files = upsertPackageOwnershipFile(record.Files, packageOwnershipFileEntry{
+		Source:      source,
+		Destination: filepath.ToSlash(relative),
+		SHA256:      digest,
+	})
+	return nil
+}
+
 func readPackageOwnershipRecord(path string) (*packageOwnershipRecord, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
