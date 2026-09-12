@@ -47,6 +47,7 @@ import { requireNanCheckAfterSplitIndexParseRule } from "./rules/require-nan-che
 import { preferStructuredCloneRule } from "./rules/prefer-structured-clone";
 import { requireFetchResponseBodyTryCatchRule } from "./rules/require-fetch-response-body-try-catch";
 import { requireErrorCodeInThrownErrorRule } from "./rules/require-error-code-in-thrown-error";
+import { requireDateParseGuardInSortComparatorRule } from "./rules/require-date-parse-guard-in-sort-comparator";
 import { requireInvalidDateCheckBeforeCompareRule } from "./rules/require-invalid-date-check-before-compare";
 import { requireSyncExecTimeoutRule } from "./rules/require-sync-exec-timeout";
 import { noEmptyCatchBlockRule } from "./rules/no-empty-catch-block";
@@ -117,6 +118,7 @@ const plugin = {
     "require-fetch-response-body-try-catch": requireFetchResponseBodyTryCatchRule,
     "require-error-code-in-thrown-error": requireErrorCodeInThrownErrorRule,
     "require-invalid-date-check-before-compare": requireInvalidDateCheckBeforeCompareRule,
+    "require-date-parse-guard-in-sort-comparator": requireDateParseGuardInSortComparatorRule,
     "require-sync-exec-timeout": requireSyncExecTimeoutRule,
     "no-empty-catch-block": noEmptyCatchBlockRule,
     "require-lastindex-reset-before-global-exec-loop": requireLastIndexResetBeforeGlobalExecLoopRule,

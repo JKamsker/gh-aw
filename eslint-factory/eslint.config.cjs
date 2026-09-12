@@ -63,6 +63,7 @@ module.exports = [
       "gh-aw-custom/require-fetch-response-body-try-catch": "warn",
       "gh-aw-custom/require-error-code-in-thrown-error": "warn",
       "gh-aw-custom/require-invalid-date-check-before-compare": "warn",
+      "gh-aw-custom/require-date-parse-guard-in-sort-comparator": "warn",
       "gh-aw-custom/require-sync-exec-timeout": "warn",
       "gh-aw-custom/no-empty-catch-block": "warn",
       "gh-aw-custom/require-lastindex-reset-before-global-exec-loop": "warn",

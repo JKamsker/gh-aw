@@ -1033,6 +1033,25 @@ if (Number.isNaN(createdAt.getTime())) throw new Error("invalid created_at");
 if (createdAt < cutoff) archive(run);
 ```
 
+### `require-date-parse-guard-in-sort-comparator`
+
+Disallow `Date.parse(x) - Date.parse(y)` as the return value of a `.sort()` comparator. `Date.parse` returns `NaN` for an unparseable string, and `Array.prototype.sort` treats a `NaN` comparator result as `0` (elements compared equal), so a single malformed date silently produces an arbitrary, non-chronological order instead of surfacing a parse error.
+
+**Flagged form:**
+```js
+runs.sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || ""));
+```
+
+**Safe alternative:**
+```js
+runs.sort((a, b) => {
+  const aTime = Date.parse(a.created_at || "");
+  const bTime = Date.parse(b.created_at || "");
+  if (!Number.isFinite(aTime) || !Number.isFinite(bTime)) return 0;
+  return bTime - aTime;
+});
+```
+
 ### `require-sync-exec-timeout`
 
 Require `execSync`, `execFileSync`, and `spawnSync` calls from `child_process` to use a positive `timeout`. Without one, a hung child process can block the action until the job-level timeout kills it.
