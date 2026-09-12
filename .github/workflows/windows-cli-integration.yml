@@ -646,21 +646,29 @@ jobs:
         if: steps.evaluate.outputs.failed == 'true'
         env:
           FAILED_JOBS: ${{ steps.evaluate.outputs.failed_jobs }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          gh issue create \
-            --repo "${{ github.repository }}" \
-            --title "❌ Windows integration failure: ${FAILED_JOBS}" \
-            --body "## Windows CLI Integration Failure
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const timestamp = new Date().toISOString().replace('T', ' ').replace(/:\d{2}\.\d{3}Z$/, ' UTC');
+            const title = `❌ Windows integration failure: ${process.env.FAILED_JOBS}`;
+            const body = [
+              '## Windows CLI Integration Failure',
+              '',
+              `**Failed jobs:** ${process.env.FAILED_JOBS}`,
+              '',
+              `**Run:** ${process.env.RUN_URL}`,
+              '',
+              `**Date:** ${timestamp}`,
+              '',
+              'This issue was created automatically by the daily Windows CLI integration workflow.',
+            ].join('\n');
 
-          **Failed jobs:** ${FAILED_JOBS}
-
-          **Run:** ${RUN_URL}
-
-          **Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
-
-          This issue was created automatically by the daily Windows CLI integration workflow."
+            await github.rest.issues.create({
+              ...context.repo,
+              title,
+              body,
+            });
 
       - name: Fail if any job failed
         if: steps.evaluate.outputs.failed == 'true'

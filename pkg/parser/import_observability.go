@@ -76,14 +76,11 @@ func extractOTLPEndpointsFromObsMap(obs map[string]any) []observabilityImportEnd
 // mergeObservabilityConfigs takes a slice of observability config JSON strings (one per
 // import), extracts all OTLP endpoint entries from each (supporting string, object, and
 // array forms), deduplicates by URL (first occurrence wins), and returns a single merged
-// observability JSON string with all endpoints expressed as an array.  Custom OTLP
-// attributes are also merged across imports (first occurrence wins per key).
-// Returns "" when no valid endpoints or attributes are found.
+// observability JSON string with all endpoints expressed as an array. Custom and
+// resource attributes are merged across imports, and the first if-missing policy
+// is retained. The first imported value wins for every overlapping setting.
 func mergeObservabilityConfigs(configs []string) string {
-	seen := make(map[string]struct{})
-	var allEndpoints []observabilityImportEndpoint
-	mergedAttrs := make(map[string]string)
-	var mergedGitHubApp map[string]any
+	merged := newObservabilityImportMerge()
 
 	for i, cfgJSON := range configs {
 		if cfgJSON == "" {
@@ -94,23 +91,56 @@ func mergeObservabilityConfigs(configs []string) string {
 			parserLog.Printf("Failed to unmarshal observability config from import %d during merge: %v", i, err)
 			continue
 		}
-		for _, e := range extractOTLPEndpointsFromObsMap(obs) {
-			if !setutil.Contains(seen, e.URL) {
-				seen[e.URL] = struct{}{}
-				allEndpoints = append(allEndpoints, e)
-			}
+		merged.add(obs)
+	}
+	return merged.toJSON()
+}
+
+type observabilityImportMerge struct {
+	seenEndpoints      map[string]struct{}
+	endpoints          []observabilityImportEndpoint
+	attributes         map[string]string
+	resourceAttributes map[string]string
+	githubApp          map[string]any
+	ifMissing          string
+}
+
+func newObservabilityImportMerge() *observabilityImportMerge {
+	return &observabilityImportMerge{
+		seenEndpoints:      make(map[string]struct{}),
+		attributes:         make(map[string]string),
+		resourceAttributes: make(map[string]string),
+	}
+}
+
+func (m *observabilityImportMerge) add(obs map[string]any) {
+	for _, endpoint := range extractOTLPEndpointsFromObsMap(obs) {
+		if setutil.Contains(m.seenEndpoints, endpoint.URL) {
+			continue
 		}
-		for k, v := range extractOTLPAttributesFromObsMap(obs) {
-			if _, exists := mergedAttrs[k]; !exists {
-				mergedAttrs[k] = v
-			}
-		}
-		if mergedGitHubApp == nil {
-			mergedGitHubApp = extractOTLPGitHubAppFromObsMap(obs)
+		m.seenEndpoints[endpoint.URL] = struct{}{}
+		m.endpoints = append(m.endpoints, endpoint)
+	}
+	mergeFirstWins(m.attributes, extractOTLPAttributesFromObsMap(obs))
+	mergeFirstWins(m.resourceAttributes, extractOTLPResourceAttributesFromObsMap(obs))
+	if m.githubApp == nil {
+		m.githubApp = extractOTLPGitHubAppFromObsMap(obs)
+	}
+	if m.ifMissing == "" {
+		m.ifMissing = extractOTLPStringFromObsMap(obs, "if-missing")
+	}
+}
+
+func mergeFirstWins(destination map[string]string, source map[string]string) {
+	for key, value := range source {
+		if _, exists := destination[key]; !exists {
+			destination[key] = value
 		}
 	}
+}
 
-	if len(allEndpoints) == 0 && len(mergedAttrs) == 0 && mergedGitHubApp == nil {
+func (m *observabilityImportMerge) toJSON() string {
+	if len(m.endpoints) == 0 && len(m.attributes) == 0 && len(m.resourceAttributes) == 0 && m.githubApp == nil && m.ifMissing == "" {
 		return ""
 	}
 
@@ -118,19 +148,25 @@ func mergeObservabilityConfigs(configs []string) string {
 	// workflow package's collectAllOTLPEndpoints handles it uniformly.  Include
 	// any merged custom attributes so the orchestrator can propagate them.
 	otlpMap := map[string]any{}
-	if len(allEndpoints) > 0 {
-		otlpMap["endpoint"] = allEndpoints
+	if len(m.endpoints) > 0 {
+		otlpMap["endpoint"] = m.endpoints
 	}
-	if len(mergedAttrs) > 0 {
-		otlpMap["attributes"] = mergedAttrs
+	if len(m.attributes) > 0 {
+		otlpMap["attributes"] = m.attributes
 	}
-	if mergedGitHubApp != nil {
-		otlpMap["github-app"] = mergedGitHubApp
+	if len(m.resourceAttributes) > 0 {
+		otlpMap["resource-attributes"] = m.resourceAttributes
+	}
+	if m.githubApp != nil {
+		otlpMap["github-app"] = m.githubApp
+	}
+	if m.ifMissing != "" {
+		otlpMap["if-missing"] = m.ifMissing
 	}
 	merged := map[string]any{"otlp": otlpMap}
 	b, err := json.Marshal(merged)
 	if err != nil {
-		parserLog.Printf("Failed to marshal %d merged OTLP endpoints: %v", len(allEndpoints), err)
+		parserLog.Printf("Failed to marshal %d merged OTLP endpoints: %v", len(m.endpoints), err)
 		return ""
 	}
 	return string(b)
@@ -171,22 +207,28 @@ func extractOTLPGitHubAppFromObsMap(obs map[string]any) map[string]any {
 // import the workflow package (circular-dependency risk), so the helper lives
 // here as a local copy.  Both implementations must stay in sync.
 func extractOTLPAttributesFromObsMap(obs map[string]any) map[string]string {
+	return extractOTLPStringMapFromObsMap(obs, "attributes")
+}
+
+func extractOTLPResourceAttributesFromObsMap(obs map[string]any) map[string]string {
+	return extractOTLPStringMapFromObsMap(obs, "resource-attributes")
+}
+
+func extractOTLPStringFromObsMap(obs map[string]any, field string) string {
+	if obs == nil {
+		return ""
+	}
+	otlpMap, _ := obs["otlp"].(map[string]any)
+	value, _ := otlpMap[field].(string)
+	return value
+}
+
+func extractOTLPStringMapFromObsMap(obs map[string]any, field string) map[string]string {
 	if obs == nil {
 		return nil
 	}
-	otlpAny, ok := obs["otlp"]
-	if !ok {
-		return nil
-	}
-	otlpMap, ok := otlpAny.(map[string]any)
-	if !ok {
-		return nil
-	}
-	attrsAny, ok := otlpMap["attributes"]
-	if !ok {
-		return nil
-	}
-	attrsMap, ok := attrsAny.(map[string]any)
+	otlpMap, _ := obs["otlp"].(map[string]any)
+	attrsMap, ok := otlpMap[field].(map[string]any)
 	if !ok {
 		return nil
 	}

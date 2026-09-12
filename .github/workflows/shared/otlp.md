@@ -5,6 +5,7 @@ network:
     - "*.grafana.net"
 observability:
   otlp:
+    if-missing: warn
     endpoint:
       - url: ${{ secrets.GH_AW_OTEL_SENTRY_ENDPOINT }}
         headers:
@@ -15,9 +16,10 @@ observability:
 ---
 
 <!--
-## Required secrets
+## Optional secrets
 
-Consumers of this shared import must provision the following secrets:
+Consumers of this shared import may provision the following secrets. When the
+endpoint secrets are absent, telemetry is skipped with a warning:
 
 - `GH_AW_OTEL_SENTRY_ENDPOINT`
 - `GH_AW_OTEL_SENTRY_AUTHORIZATION`

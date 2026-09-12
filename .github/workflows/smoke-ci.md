@@ -14,6 +14,7 @@ on:
 concurrency:
   group: smoke-ci-${{ github.ref }}
   cancel-in-progress: true
+if: ${{ github.repository == 'github/gh-aw' }}
 permissions:
   contents: read
   issues: read

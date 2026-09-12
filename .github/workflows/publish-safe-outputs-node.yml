@@ -26,6 +26,8 @@ env:
 
 jobs:
   publish:
+    # This workflow publishes the canonical ghcr.io/github/gh-aw-node image.
+    if: github.repository == 'github/gh-aw'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
