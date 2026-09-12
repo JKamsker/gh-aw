@@ -47,6 +47,7 @@ func runLiveLogsCommand(t *testing.T, cachePath, outputDir string) {
 		"--repo", "github/gh-aw",
 		"--count", "1",
 		"--end-date", "-1d",
+		"--artifacts", "usage",
 		"--cached-jsonl", cachePath,
 		"--output", outputDir,
 	})
